@@ -21,6 +21,9 @@
       <div class="clause__tags">
         <SeverityTag :severity="change.severity" />
         <span class="clause__type">{{ change.change_type_label }}</span>
+        <span v-if="change.rule_bundle_version" class="clause__rule" data-test="change-rule-bundle">
+          规则 {{ change.rule_bundle_version }}
+        </span>
         <span class="clause__metric num">相似度 {{ change.similarity.toFixed(3) }}</span>
         <span class="clause__metric num">编辑幅度 {{ change.edit_ratio.toFixed(3) }}</span>
         <span v-if="change.confirmed" class="clause__confirmed">已确认</span>
@@ -122,6 +125,13 @@ const chips = computed(() => keywordChips(props.change.keywords ?? []))
 }
 .clause__type {
   letter-spacing: 0.08em;
+}
+.clause__rule {
+  font-family: var(--sans);
+  font-size: 9.5px;
+  color: var(--indigo);
+  border: 1px solid var(--rule-soft);
+  padding: 1px 5px;
 }
 .clause__metric {
   color: var(--ink-faint);

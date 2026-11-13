@@ -33,11 +33,19 @@ def list_run_changes(db: Session, run_id: uuid.UUID) -> list[dict]:
 
 
 def pending_review(db: Session, limit: int = 50) -> list[dict]:
-    """待确认队列：已成功的批次里、尚未确认的变更。"""
+    """待确认队列：生效口径（is_active）的已成功批次里、尚未确认的变更。
+
+    重算未切换前，新结论 is_active=False，不会混进复核队列；切换后旧结论移出队列，
+    保证复核人看到的统计与清单始终是同一个口径。
+    """
     changes = db.execute(
         select(ChangeItem)
         .join(DiffRun, DiffRun.id == ChangeItem.diff_run_id)
-        .where(DiffRun.status == "succeeded", ChangeItem.confirmed.is_(False))
+        .where(
+            DiffRun.status == "succeeded",
+            DiffRun.is_active.is_(True),
+            ChangeItem.confirmed.is_(False),
+        )
         .order_by(DiffRun.created_at.desc(), ChangeItem.clause_no_new.nulls_last())
         .limit(limit)
     ).scalars().all()
@@ -100,6 +108,8 @@ def publish_run(
         raise not_found("比对批次", run_id)
     if run.status != "succeeded":
         raise AppError(codes.DIFF_NOT_READY, detail=f"status={run.status}")
+    if not run.is_active:
+        raise AppError(codes.RUN_NOT_ACTIVE, "该批次已被新口径结论替代，不能再发布；请发布当前生效批次")
 
     confirmed = db.execute(
         select(ChangeItem).where(
@@ -159,9 +169,15 @@ def publish_run(
 
 
 def public_changes(db: Session) -> list[dict]:
-    """客户视图：只返回已发布变更，按批次聚合发布说明。"""
+    """客户视图：只返回生效口径下的已发布变更，按批次聚合发布说明。
+
+    重算切换后旧批次 is_active=False，自动从客户视图撤下，避免两套口径同时外发；
+    旧批次本身与已发布结论仍保留在库里，可通过批次详情/导出回溯。
+    """
     runs = db.execute(
-        select(DiffRun).where(DiffRun.published_at.is_not(None)).order_by(DiffRun.published_at.desc())
+        select(DiffRun)
+        .where(DiffRun.published_at.is_not(None), DiffRun.is_active.is_(True))
+        .order_by(DiffRun.published_at.desc())
     ).scalars().all()
     payload: list[dict] = []
     for run in runs:
@@ -177,6 +193,7 @@ def public_changes(db: Session) -> list[dict]:
             {
                 "diff_run_id": str(run.id),
                 "document_key": run.document_key,
+                "rule_bundle_version": run.rule_bundle_version,
                 "title": target.title if target else "",
                 "issuer": target.issuer if target else "",
                 "base_label": run.stats.get("base_label", ""),

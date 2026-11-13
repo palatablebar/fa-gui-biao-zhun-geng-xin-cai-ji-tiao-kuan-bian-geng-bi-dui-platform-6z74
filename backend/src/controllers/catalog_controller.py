@@ -45,6 +45,9 @@ def get_version(db: Session, version_id: uuid.UUID) -> dict:
             "target_label": run.stats.get("target_label", ""),
             "status": run.status,
             "change_count": run.change_count,
+            "rule_bundle_version": run.rule_bundle_version,
+            "is_active": run.is_active,
+            "lineage": run.lineage,
             "created_at": run.created_at.isoformat() if run.created_at else None,
         }
         for run in document_service.version_history(db, document.document_key)

@@ -23,6 +23,10 @@ class ChangeItem(Base, TimestampMixin):
         nullable=False,
         index=True,
     )
+    # 结论绑定的规则包版本（冗余自 DiffRun，便于按口径直接检索/导出）。
+    rule_bundle_version: Mapped[str] = mapped_column(String(30), nullable=False, default="1.0.0", index=True)
+    # 跨规则包对照用的稳定条款键：同一条款在不同规则包结论里 item_key 一致。
+    item_key: Mapped[str] = mapped_column(String(120), nullable=False, default="", index=True)
     change_type: Mapped[str] = mapped_column(String(20), nullable=False)
     severity: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     clause_no_old: Mapped[int | None] = mapped_column(Integer, nullable=True)

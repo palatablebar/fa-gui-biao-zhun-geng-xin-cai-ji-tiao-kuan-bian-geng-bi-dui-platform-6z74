@@ -34,9 +34,8 @@ class Settings(BaseSettings):
     rate_limit_crawl_per_minute: int = 8
     rate_limit_default_per_minute: int = 240
 
-    # 算法阈值（可与 fixtures 一起复现；前端只展示后端回传值）
-    align_match_threshold: float = 0.55
-    align_change_threshold: float = 0.86
+    # 算法阈值统一由规则包（services/rule_registry.py）版本化管理，
+    # 不再放在全局配置里，避免升级口径时出现两个事实来源。
 
     @property
     def database_url(self) -> str:

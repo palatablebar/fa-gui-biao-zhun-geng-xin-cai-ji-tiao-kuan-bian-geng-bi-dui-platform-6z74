@@ -32,6 +32,7 @@
         </div>
         <div class="note__stamps">
           <StatusSeal label="已发布" tone="seal" />
+          <RuleBundleBadge :version="group.rule_bundle_version" active testId="published-rule" />
           <div class="note__counts">
             <span class="num">{{ group.changes.length }}</span>
             <span class="label">条变更</span>
@@ -89,6 +90,7 @@ import ClauseDiffCard from '../components/common/ClauseDiffCard.vue'
 import EmptyState from '../components/common/EmptyState.vue'
 import ErrorNotice from '../components/common/ErrorNotice.vue'
 import PageHeader from '../components/common/PageHeader.vue'
+import RuleBundleBadge from '../components/common/RuleBundleBadge.vue'
 import SeverityTag from '../components/common/SeverityTag.vue'
 import StatusSeal from '../components/common/StatusSeal.vue'
 import { downloadExport, fetchPublicChanges } from '../api/change'

@@ -16,7 +16,6 @@ ARTICLE_RE = re.compile(r"第\s*([一二三四五六七八九十百千零〇两0
 SUB_ITEM_RE = re.compile(r"^\s*[（(]\s*([一二三四五六七八九十]{1,4})\s*[）)]")
 _PREFIX_SYMBOLS = "　 \t:：、.。"
 
-
 @dataclass
 class Clause:
     """一条条款。`label` 保留原文条号（第四条），`number` 为整数条号。"""
@@ -75,22 +74,35 @@ def int_to_chinese(value: int) -> str:
     return f"{head}{int_to_chinese(rest)}"
 
 
-def _clean_block(text: str) -> str:
-    lines = [line.strip().strip(_PREFIX_SYMBOLS) for line in text.splitlines()]
+def _clean_block(text: str, prefix_symbols: str = _PREFIX_SYMBOLS) -> str:
+    lines = [line.strip().strip(prefix_symbols) for line in text.splitlines()]
     kept = [line for line in lines if line]
     return "\n".join(kept).strip()
 
 
-def _extract_sub_items(block: str) -> list[str]:
+def _extract_sub_items(block: str, sub_item_re: re.Pattern[str] = SUB_ITEM_RE) -> list[str]:
     items: list[str] = []
     for line in block.splitlines():
-        if SUB_ITEM_RE.match(line.strip()):
+        if sub_item_re.match(line.strip()):
             items.append(line.strip())
     return items
 
 
-def split_clauses(raw_text: str) -> SplitResult:
-    """切分条款。空文本/无条头返回单条 unparsed。"""
+def split_clauses(raw_text: str, rule_context: "object | None" = None) -> SplitResult:
+    """切分条款。空文本/无条头返回单条 unparsed。
+
+    rule_context 为 RuleContext（见 services/rule_registry.py）；为 None 时使用模块默认
+    正则（升级前调用方的兼容路径，口径与 v1.0.0 一致）。
+    """
+    if rule_context is not None:
+        article_re = re.compile(rule_context.splitter.article_pattern)
+        sub_item_re = re.compile(rule_context.splitter.sub_item_pattern)
+        prefix_symbols = rule_context.splitter.prefix_symbols
+    else:
+        article_re = ARTICLE_RE
+        sub_item_re = SUB_ITEM_RE
+        prefix_symbols = _PREFIX_SYMBOLS
+
     raw = (raw_text or "").replace("\r\n", "\n").replace("\r", "\n")
     if not raw.strip():
         return SplitResult(
@@ -98,7 +110,7 @@ def split_clauses(raw_text: str) -> SplitResult:
             issues=[{"reason": "empty_document", "detail": "正文为空", "clause_label": ""}],
         )
 
-    matches = list(ARTICLE_RE.finditer(raw))
+    matches = list(article_re.finditer(raw))
     if not matches:
         return SplitResult(
             clauses=[],
@@ -117,7 +129,7 @@ def split_clauses(raw_text: str) -> SplitResult:
         number = clause_number_to_int(number_raw)
         start = match.end()
         end = matches[order + 1].start() if order + 1 < len(matches) else len(raw)
-        block = _clean_block(raw[start:end])
+        block = _clean_block(raw[start:end], prefix_symbols)
         label = f"第{number_raw}条"
         if not block:
             issues.append({"reason": "empty_clause", "detail": f"{label} 正文为空", "clause_label": label})
@@ -130,7 +142,7 @@ def split_clauses(raw_text: str) -> SplitResult:
                 label=label,
                 number=number,
                 text=block,
-                sub_items=_extract_sub_items(block),
+                sub_items=_extract_sub_items(block, sub_item_re),
             )
         )
 

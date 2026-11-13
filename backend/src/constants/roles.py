@@ -19,6 +19,8 @@ PERMISSIONS: dict[str, tuple[str, ...]] = {
     "documents:read": ALL_ROLES,
     "diffs:read": ALL_ROLES,
     "diffs:run": (ROLE_ADMIN, ROLE_ANALYST),
+    "diffs:recalc": (ROLE_ADMIN, ROLE_ANALYST),
+    "rules:read": ALL_ROLES,
     "changes:read": ALL_ROLES,
     "changes:confirm": (ROLE_ADMIN, ROLE_ANALYST),
     "changes:publish": (ROLE_ADMIN,),

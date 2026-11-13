@@ -24,6 +24,8 @@ MATCH_THRESHOLD = 0.55
 CHANGE_THRESHOLD = 0.86
 EXACT_BONUS = 0.0
 NUMBER_BONUS = 0.02
+TFIDF_WEIGHT = 0.7
+SIMHASH_WEIGHT = 0.3
 
 
 @dataclass
@@ -113,10 +115,13 @@ def _pair_score(
     cosine: float,
     left_hash: int,
     right_hash: int,
+    number_bonus: float = NUMBER_BONUS,
+    tfidf_weight: float = TFIDF_WEIGHT,
+    simhash_weight: float = SIMHASH_WEIGHT,
 ) -> tuple[float, float]:
     sim_hash_sim = 1.0 - hamming_distance(left_hash, right_hash) / 64.0 if (left_hash and right_hash) else 0.0
-    text_sim = 0.7 * cosine + 0.3 * sim_hash_sim
-    bonus = NUMBER_BONUS if (left.number is not None and left.number == right.number) else 0.0
+    text_sim = tfidf_weight * cosine + simhash_weight * sim_hash_sim
+    bonus = number_bonus if (left.number is not None and left.number == right.number) else 0.0
     return round(text_sim, 6), round(text_sim + bonus, 6)
 
 
@@ -125,6 +130,9 @@ def align_clauses(
     new_clauses: list[Clause],
     match_threshold: float = MATCH_THRESHOLD,
     change_threshold: float = CHANGE_THRESHOLD,
+    number_bonus: float = NUMBER_BONUS,
+    tfidf_weight: float = TFIDF_WEIGHT,
+    simhash_weight: float = SIMHASH_WEIGHT,
 ) -> AlignResult:
     corpus = [clause.text for clause in old_clauses] + [clause.text for clause in new_clauses]
     vectors = _tfidf_vectors(corpus)
@@ -171,7 +179,14 @@ def align_clauses(
                 continue
             cosine = _cosine(old_vectors[old_index], new_vectors[new_index])
             text_sim, score = _pair_score(
-                old_clause, new_clause, cosine, old_hashes[old_index], new_hashes[new_index]
+                old_clause,
+                new_clause,
+                cosine,
+                old_hashes[old_index],
+                new_hashes[new_index],
+                number_bonus=number_bonus,
+                tfidf_weight=tfidf_weight,
+                simhash_weight=simhash_weight,
             )
             if text_sim >= match_threshold:
                 candidates.append((score, text_sim, old_index, new_index))

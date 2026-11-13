@@ -61,6 +61,28 @@
 - **输出落库**：`change_items.severity / keywords / industries / reason / similarity / edit_ratio`，
   前端只展示接口回传的数值（无前端硬编码 / 假图）。
 
+### 3. 规则包版本化与按新口径重算（`services/rule_registry.py` + `recalc_service.py`）
+
+判级规则升级后，历史结论不能被覆盖或混用口径，因此把**切分 / 对齐 / 判级三段规则整体版本化**：
+
+- **规则包 RuleBundle**：注册表（代码侧）+ `rule_bundles` 表（接口可读）。每个规则包是不可变的
+  `RuleContext`（切分正则、对齐阈值、判级阈值与词典快照）。已注册：
+  - `1.0.0` 历史口径（配对 0.55 / 变更 0.86 / 一般编辑幅度阈值 0.08），升级前结论固定绑定；
+  - `2.0.0` 新口径（配对 0.75 / 变更 0.80 / 阈值 0.05 + 强制性义务措辞修改升级为一般）。
+- **结论绑定当次规则**：每份 `diff_runs` 落库时快照 `rule_bundle_version` + 完整 `rule_config`，
+  每个 `change_items` 也冗余规则版本与跨口径稳定键 `item_key`；即使注册表继续演进，旧结论仍可逐位复现。
+- **重算不覆盖**：`POST /api/diffs/{id}/recalculate` 用新规则包生成**独立的新 DiffRun / ChangeItem**，
+  旧批次原样保留、仍可查看与导出（导出文件带规则版本，文件名也区分口径）。
+- **逐条对照**：新结论完整落库后按条款稳定键比对两份结论，写入 `recalculation_items`，
+  逐条标出 `added`（新口径新增）/ `disappeared`（旧口径消失）/ `regraded`（改级或类型变化）/ `unchanged`。
+- **原子切换**：对照明细与新结论在同一事务里全部落库成功后，最后一步才翻转 `is_active`——
+  同一对版本始终只有一份生效结论，统计、待确认队列、客户视图、导出在提交前都仍读旧口径，绝不混用。
+- **失败安全**：任一步失败整体回滚，重算记录置 `failed`，旧批次保持 `succeeded + is_active`；
+  修复后重发复用同一条重算记录与失败批次行，不产生重复结论。
+- **幂等**：`(版本对, 规则包)` 唯一约束 + `(source_run, 目标规则包)` 重算唯一约束，
+  重复发起返回同一记录/批次；在途重算返回 409，已完成直接返回，重复执行不会重复生成结论。
+- 被新口径替代的旧批次不能再发布（`RUN_NOT_ACTIVE`）；客户视图只外发生效口径的已发布内容。
+
 ## 功能模块（除登录外 3 个可串链路的模块）
 
 1. **采集**：来源清单与巡检配置 → `POST /api/sources/{id}/crawl` 落新版本（幂等，重复采集 409）。
@@ -76,7 +98,7 @@
 | 后端 | Python 3.11 + FastAPI + SQLAlchemy 2.0 + Pydantic v2 + PyJWT |
 | 算法 | 纯标准库：TF-IDF、SimHash、difflib 序列相似度（无 numpy / 无外部分词器） |
 | 异步 | Celery 5 + Redis（worker 消费 `lawdelta.run_diff`，beat 写心跳与来源巡检） |
-| 数据库 | PostgreSQL 16（`lawdelta` schema，9 张表） |
+| 数据库 | PostgreSQL 16（`lawdelta` schema，12 张表） |
 | 容器 | 5 服务：frontend(Nginx) / backend(uvicorn) / worker(Celery) / db / redis，全部 healthcheck |
 | 视觉 | 铅字印刷 · 法典装订：米白纸 / 深棕墨 / 朱红印章；Noto Serif SC + Source Sans 3；`oklch()` 色板 |
 
@@ -119,9 +141,10 @@ gb-568/
 │   └── src/
 │       ├── config/               # settings / database / app / celery_app
 │       ├── constants/            # roles / enums / error_codes / limits / log_templates
-│       ├── models/               # user / source / document / diff_run / change_item / audit_log
+│       ├── models/               # user / source / document / diff_run / change_item
+│       │                         #   rule_bundle / recalculation(+item) / audit_log
 │       ├── schemas/              # auth / domain / common（Pydantic）
-│       ├── services/             # 算法 + 业务编排（crawl/diff/change/export/audit/...）
+│       ├── services/             # 算法 + 业务编排（crawl/diff/recalc/rule/change/export/audit/...）
 │       ├── controllers/          # 薄控制器（参数 → service → dict）
 │       ├── routes/               # FastAPI 路由（/api/*）
 │       ├── middlewares/          # auth / rbac / rate_limit / audit_logger / error_handler
@@ -155,7 +178,9 @@ gb-568/
 - 前端使用：`pages/DiffResultPage.vue`、`pages/ChangeReviewPage.vue`、`pages/PublishedPage.vue`、
   `components/common/SeverityTag.vue`、`components/common/ClauseDiffCard.vue`
 
-同组还有：`DiffRunStatus`、`DocumentStatus`、`Industry`、`SourceKind`（同上两处成对定义）。
+同组还有：`DiffRunStatus`、`DocumentStatus`、`Industry`、`SourceKind`，以及规则重算相关的
+`RecalcStatus`（queued/running/succeeded/failed）、`RecalcDiffStatus`（added/disappeared/regraded/unchanged）、
+`RunLineage`（initial/recalc）（后端 `enums.py` 与前端 `enums.ts` 成对定义）。
 
 ## 接口一览（统一 `/api` 前缀，JWT Bearer）
 
@@ -168,6 +193,9 @@ gb-568/
 | POST | `/api/sources/{id}/crawl` | admin / analyst |
 | POST | `/api/diffs` | admin / analyst |
 | GET | `/api/diffs` / `/api/diffs/{id}` / `/api/diffs/{id}/changes` | 任意登录角色 |
+| GET | `/api/rule-bundles` | 任意登录角色 |
+| POST | `/api/diffs/{id}/recalculate` | admin / analyst |
+| GET | `/api/recalculations` / `/api/recalculations/{id}` | 任意登录角色 |
 | GET | `/api/changes/pending` | 任意登录角色 |
 | POST | `/api/changes/{id}/confirm` | admin / analyst |
 | POST | `/api/diffs/{id}/publish` | **仅 admin** |

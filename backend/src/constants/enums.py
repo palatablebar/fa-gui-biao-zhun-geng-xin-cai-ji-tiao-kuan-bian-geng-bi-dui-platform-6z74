@@ -32,6 +32,39 @@ class DiffRunStatus(str, Enum):
     FAILED = "failed"
 
 
+class RecalcStatus(str, Enum):
+    """重算编排状态（与 DiffRunStatus 分开，避免重算失败污染原批次状态）。"""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class RecalcDiffStatus(str, Enum):
+    """逐条对照状态：新口径新增 / 旧口径消失 / 改级（含类型变化）/ 不变。"""
+
+    ADDED = "added"
+    DISAPPEARED = "disappeared"
+    REGRADED = "regraded"
+    UNCHANGED = "unchanged"
+
+
+class RunLineage(str, Enum):
+    """结论血缘：initial=首次比对；recalc=重算产生的对照结论。"""
+
+    INITIAL = "initial"
+    RECALC = "recalc"
+
+
+RECALC_DIFF_LABELS: dict[str, str] = {
+    RecalcDiffStatus.ADDED.value: "新增",
+    RecalcDiffStatus.DISAPPEARED.value: "消失",
+    RecalcDiffStatus.REGRADED.value: "改级",
+    RecalcDiffStatus.UNCHANGED.value: "不变",
+}
+
+
 class ChangeType(str, Enum):
     """条款级变更类型。"""
 

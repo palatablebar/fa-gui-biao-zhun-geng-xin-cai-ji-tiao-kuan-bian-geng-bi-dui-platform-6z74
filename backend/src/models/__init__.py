@@ -4,6 +4,8 @@ from src.models.base import Base
 from src.models.change_item import ChangeItem
 from src.models.diff_run import DiffRun
 from src.models.document import Document
+from src.models.recalculation import Recalculation, RecalculationItem
+from src.models.rule_bundle import RuleBundle
 from src.models.source import Source
 from src.models.user import User
 
@@ -13,6 +15,9 @@ __all__ = [
     "ChangeItem",
     "DiffRun",
     "Document",
+    "Recalculation",
+    "RecalculationItem",
+    "RuleBundle",
     "Source",
     "User",
 ]

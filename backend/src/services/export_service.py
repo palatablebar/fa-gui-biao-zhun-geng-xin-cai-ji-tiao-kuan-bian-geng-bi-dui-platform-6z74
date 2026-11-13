@@ -22,6 +22,11 @@ def render_markdown(run_payload: dict, changes: list[dict]) -> str:
     lines.append(f"- 版本：`{run_payload.get('base_label')}` → `{run_payload.get('target_label')}`")
     lines.append(f"- 比对批次：`{run_payload.get('id')}`")
     lines.append(f"- 算法版本：`{run_payload.get('algorithm_version')}`")
+    lines.append(f"- 判级规则包：`{run_payload.get('rule_bundle_version', '1.0.0')}`")
+    if run_payload.get("rule_change_summary"):
+        lines.append(f"- 规则口径：{run_payload.get('rule_change_summary')}")
+    if run_payload.get("lineage") == "recalc":
+        lines.append("- 结论来源：按新规则包重算（旧口径结论仍保留可回溯）")
     lines.append(
         f"- 结论：共 {run_payload.get('change_count', 0)} 条变更"
         f"（重大 {severity.get('major', 0)} / 一般 {severity.get('general', 0)} / 编辑性 {severity.get('editorial', 0)}）"
@@ -62,7 +67,8 @@ def render_csv(run_payload: dict, changes: list[dict]) -> str:
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(
         [
-            "document_key", "base_version", "target_version", "clause_no_old", "clause_no_new",
+            "document_key", "base_version", "target_version", "rule_bundle_version",
+            "clause_no_old", "clause_no_new",
             "change_type", "severity", "similarity", "edit_ratio", "industries",
             "impact_industries", "confirmed", "published", "reason", "impact_note",
         ]
@@ -73,6 +79,7 @@ def render_csv(run_payload: dict, changes: list[dict]) -> str:
                 run_payload.get("document_key", ""),
                 run_payload.get("base_label", ""),
                 run_payload.get("target_label", ""),
+                run_payload.get("rule_bundle_version", ""),
                 change.get("clause_no_old") if change.get("clause_no_old") is not None else "",
                 change.get("clause_no_new") if change.get("clause_no_new") is not None else "",
                 change["change_type"],
@@ -92,4 +99,8 @@ def render_csv(run_payload: dict, changes: list[dict]) -> str:
 
 def export_filename(run_payload: dict, fmt: str) -> str:
     key = (run_payload.get("document_key") or "document").replace(" ", "-")
-    return f"lawdelta-{key}-{run_payload.get('base_label')}-{run_payload.get('target_label')}-changes.{fmt}"
+    rule = (run_payload.get("rule_bundle_version") or "na").replace(".", "")
+    return (
+        f"lawdelta-{key}-{run_payload.get('base_label')}-{run_payload.get('target_label')}"
+        f"-rule{rule}-changes.{fmt}"
+    )

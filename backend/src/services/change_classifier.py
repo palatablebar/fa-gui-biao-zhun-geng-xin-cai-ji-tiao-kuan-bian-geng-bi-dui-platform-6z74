@@ -105,18 +105,66 @@ def classify_change(
     change_type: str,
     old_text: str,
     new_text: str,
+    rule_context: "object | None" = None,
 ) -> ClassifierResult:
-    """对一条变更判级。change_type: added / removed / modified。"""
+    """对一条变更判级。change_type: added / removed / modified。
+
+    rule_context 为 RuleContext 时按规则包快照里的阈值/词典/升级开关判级；
+    为 None 时走升级前默认口径（general 阈值 0.08、不做强制措辞升级）。
+    """
+    if rule_context is not None:
+        rules = rule_context.classifier
+        threshold = rules.general_edit_ratio_threshold
+        escalate_mandatory = rules.escalate_mandatory_wording
+        keyword_groups = rules.keyword_groups or KEYWORD_GROUPS
+        industry_keywords = rules.industry_keywords or INDUSTRY_KEYWORDS
+    else:
+        threshold = 0.08
+        escalate_mandatory = False
+        keyword_groups = KEYWORD_GROUPS
+        industry_keywords = INDUSTRY_KEYWORDS
+
     if change_type == ChangeType.ADDED.value:
-        return _classify_one_side(new_text, ChangeType.ADDED.value)
+        return _classify_one_side(new_text, ChangeType.ADDED.value, keyword_groups, industry_keywords)
     if change_type == ChangeType.REMOVED.value:
-        return _classify_one_side(old_text, ChangeType.REMOVED.value)
-    return _classify_modified(old_text, new_text)
+        return _classify_one_side(old_text, ChangeType.REMOVED.value, keyword_groups, industry_keywords)
+    return _classify_modified(
+        old_text,
+        new_text,
+        general_threshold=threshold,
+        escalate_mandatory=escalate_mandatory,
+        keyword_groups=keyword_groups,
+        industry_keywords=industry_keywords,
+    )
 
 
-def _classify_one_side(text: str, change_type: str) -> ClassifierResult:
-    groups = detect_keyword_groups(text)
-    industries = detect_industries(text)
+def _detect_keyword_groups(text: str, keyword_groups: dict[str, tuple[str, ...]]) -> dict[str, list[str]]:
+    normalized = normalize_for_match(text)
+    found: dict[str, list[str]] = {}
+    for group, words in keyword_groups.items():
+        hits = [word for word in words if word in normalized]
+        if hits:
+            found[group] = hits
+    return found
+
+
+def _detect_industries(text: str, industry_keywords: dict[str, tuple[str, ...]]) -> list[str]:
+    normalized = normalize_for_match(text)
+    industries: list[str] = []
+    for industry, words in industry_keywords.items():
+        if any(word in normalized for word in words):
+            industries.append(industry)
+    return industries
+
+
+def _classify_one_side(
+    text: str,
+    change_type: str,
+    keyword_groups: dict[str, tuple[str, ...]] = KEYWORD_GROUPS,
+    industry_keywords: dict[str, tuple[str, ...]] = INDUSTRY_KEYWORDS,
+) -> ClassifierResult:
+    groups = _detect_keyword_groups(text, keyword_groups)
+    industries = _detect_industries(text, industry_keywords)
     keywords = _flatten(groups)
     label = "新增条款" if change_type == ChangeType.ADDED.value else "删除条款"
     if "penalty" in groups or "qualification" in groups:
@@ -150,22 +198,32 @@ def _classify_one_side(text: str, change_type: str) -> ClassifierResult:
     )
 
 
-def _classify_modified(old_text: str, new_text: str) -> ClassifierResult:
+def _classify_modified(
+    old_text: str,
+    new_text: str,
+    general_threshold: float = 0.08,
+    escalate_mandatory: bool = False,
+    keyword_groups: dict[str, tuple[str, ...]] = KEYWORD_GROUPS,
+    industry_keywords: dict[str, tuple[str, ...]] = INDUSTRY_KEYWORDS,
+) -> ClassifierResult:
     ratio = edit_ratio(old_text, new_text)
-    groups_old = set(detect_keyword_groups(old_text))
-    groups_new = set(detect_keyword_groups(new_text))
+    groups_old = set(_detect_keyword_groups(old_text, keyword_groups))
+    groups_new = set(_detect_keyword_groups(new_text, keyword_groups))
     introduced = groups_new - groups_old
     removed_groups = groups_old - groups_new
     old_numbers = numbers_signature(old_text)
     new_numbers = numbers_signature(new_text)
     number_delta = old_numbers != new_numbers
 
-    keywords_old = detect_keyword_groups(old_text)
-    keywords_new = detect_keyword_groups(new_text)
+    keywords_old = _detect_keyword_groups(old_text, keyword_groups)
+    keywords_new = _detect_keyword_groups(new_text, keyword_groups)
     keywords = sorted(
         {f"new:{item}" for item in _flatten(keywords_new)} | {f"old:{item}" for item in _flatten(keywords_old)}
     )
-    industries = sorted(set(detect_industries(old_text)) | set(detect_industries(new_text)))
+    industries = sorted(
+        set(_detect_industries(old_text, industry_keywords))
+        | set(_detect_industries(new_text, industry_keywords))
+    )
 
     severe_introduced = [group for group in SEVERE_GROUPS if group in introduced]
     if severe_introduced:
@@ -179,7 +237,17 @@ def _classify_modified(old_text: str, new_text: str) -> ClassifierResult:
             number_delta=number_delta,
         )
 
-    if ratio >= 0.08 or number_delta or introduced or removed_groups:
+    # v2 新口径：措辞级修改但新文本仍带强制性义务词，升级为一般，避免义务调整被静默吞掉。
+    mandatory_wording = (
+        escalate_mandatory
+        and "mandatory" in groups_new
+        and not number_delta
+        and not introduced
+        and not removed_groups
+        and ratio < general_threshold
+    )
+
+    if ratio >= general_threshold or number_delta or introduced or removed_groups or mandatory_wording:
         parts: list[str] = []
         if number_delta:
             parts.append(f"数值口径变化（{'→'.join(old_numbers) or '空'} ⇒ {'→'.join(new_numbers) or '空'}）")
@@ -187,8 +255,10 @@ def _classify_modified(old_text: str, new_text: str) -> ClassifierResult:
             parts.append("新增关键词组：" + "、".join(KEYWORD_LABELS.get(g, g) for g in sorted(introduced)))
         if removed_groups:
             parts.append("移除关键词组：" + "、".join(KEYWORD_LABELS.get(g, g) for g in sorted(removed_groups)))
-        if ratio >= 0.08:
-            parts.append(f"编辑幅度 {ratio:.3f} ≥ 0.08")
+        if ratio >= general_threshold:
+            parts.append(f"编辑幅度 {ratio:.3f} ≥ {general_threshold:.2f}")
+        if mandatory_wording:
+            parts.append("强制性义务措辞修改，按新口径升级为一般变更")
         return ClassifierResult(
             severity=Severity.GENERAL.value,
             keywords=keywords,
@@ -202,7 +272,7 @@ def _classify_modified(old_text: str, new_text: str) -> ClassifierResult:
         severity=Severity.EDITORIAL.value,
         keywords=keywords,
         industries=industries,
-        reason=f"编辑性变更：仅措辞/标点差异，编辑幅度 {ratio:.3f} < 0.08 且无数值变化",
+        reason=f"编辑性变更：仅措辞/标点差异，编辑幅度 {ratio:.3f} < {general_threshold:.2f} 且无数值变化",
         edit_ratio=ratio,
         number_delta=False,
     )

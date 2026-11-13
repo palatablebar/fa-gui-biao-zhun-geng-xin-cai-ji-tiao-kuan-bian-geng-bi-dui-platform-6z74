@@ -86,7 +86,8 @@
             <select v-model="publishRunId" class="field" data-test="publish-run">
               <option value="">— 选择已完成的批次 —</option>
               <option v-for="option in publishableRuns" :key="option.id" :value="option.id">
-                {{ option.document_key }} {{ option.base_label }} → {{ option.target_label }}（{{ option.change_count }} 条）
+                {{ option.document_key }} {{ option.base_label }} → {{ option.target_label }}
+                （规则 {{ option.rule_bundle_version }} · {{ option.change_count }} 条）
               </option>
             </select>
           </label>
@@ -159,7 +160,10 @@ const publishNote = ref('客户台账与培训材料已同步至新版本口径�
 
 const drafts = reactive<Record<string, { industries: Industry[]; note: string }>>({})
 
-const publishableRuns = computed(() => diffStore.runs.filter((run) => run.status === 'succeeded'))
+// 发布只针对生效口径：被新口径替代的旧批次不能再发布（后端也会拦截）。
+const publishableRuns = computed(() =>
+  diffStore.runs.filter((run) => run.status === 'succeeded' && run.is_active),
+)
 
 function draftOf(changeId: string) {
   if (!drafts[changeId]) drafts[changeId] = { industries: [], note: '' }

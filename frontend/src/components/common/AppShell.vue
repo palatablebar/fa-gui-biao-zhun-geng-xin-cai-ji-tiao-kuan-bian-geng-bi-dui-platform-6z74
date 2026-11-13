@@ -60,7 +60,7 @@
         </div>
         <div class="topbar__right">
           <span class="topbar__meta">台账版本 2026-11</span>
-          <span class="topbar__meta">算法 v1.0.0</span>
+          <span class="topbar__meta">算法引擎 v1.0.0 · 规则口径多版本</span>
         </div>
       </header>
       <div class="body">

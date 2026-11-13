@@ -3,7 +3,7 @@
     <PageHeader
       eyebrow="比对与变更 · clause alignment"
       :title="run ? `${run.title || run.document_key} · ${run.base_label} → ${run.target_label}` : '条款比对结果'"
-      description="按「第X条」切分后做编号相似 + TF-IDF 余弦 + SimHash 汉明距对齐；编号重排被静默吸收，只有正文变化才进入变更项。"
+      description="按「第X条」切分后做编号相似 + TF-IDF 余弦 + SimHash 汉明距对齐；编号重排被静默吸收，只有正文变化才进入变更项。每份结论绑定当次切分、对齐和判级规则。"
     >
       <template #actions>
         <RouterLink to="/changes/review" class="btn" data-test="goto-review">去确认变更</RouterLink>
@@ -11,6 +11,33 @@
         <button class="btn" :disabled="!canExport || busyExport" data-test="export-csv" @click="exportAs('csv')">导出 CSV</button>
       </template>
     </PageHeader>
+
+    <div v-if="run" class="rulebar rise" data-test="rule-bar">
+      <RuleBundleBadge
+        :version="run.rule_bundle_version"
+        :active="run.is_active"
+        :superseded="!run.is_active"
+      />
+      <span class="rulebar__lineage">
+        {{ run.lineage === 'recalc' ? '规则重算结论' : '首次比对结论' }}
+      </span>
+      <span v-if="!run.is_active" class="rulebar__inactive">
+        该批次已被新口径替代，统计与确认清单已切换到生效批次；本页结论仍可查看与导出。
+      </span>
+      <span v-else class="rulebar__active-note">当前生效口径，统计与变更清单以此为准。</span>
+      <div v-if="siblings.length" class="rulebar__siblings">
+        <span class="label">同版本对其它口径：</span>
+        <RouterLink
+          v-for="sibling in siblings"
+          :key="sibling.id"
+          :to="`/diffs/${sibling.id}`"
+          class="rulebar__sibling"
+          :data-test="`sibling-${sibling.id}`"
+        >
+          {{ sibling.rule_bundle_version }}{{ sibling.is_active ? '·生效' : '·历史' }}
+        </RouterLink>
+      </div>
+    </div>
 
     <ErrorNotice :error="error" @retry="reload" />
     <p v-if="notice" class="notice">{{ notice }}</p>
@@ -30,6 +57,8 @@
     </div>
 
     <template v-if="run && run.status === 'succeeded'">
+      <RecalcPanel v-if="canRecalc" :run="run" />
+
       <section class="stats rise" aria-label="比对统计">
         <div class="stat stat--wide">
           <div class="label">条款规模</div>
@@ -121,13 +150,17 @@ import ClauseDiffCard from '../components/common/ClauseDiffCard.vue'
 import EmptyState from '../components/common/EmptyState.vue'
 import ErrorNotice from '../components/common/ErrorNotice.vue'
 import PageHeader from '../components/common/PageHeader.vue'
+import RecalcPanel from '../components/common/RecalcPanel.vue'
+import RuleBundleBadge from '../components/common/RuleBundleBadge.vue'
 import SeverityTag from '../components/common/SeverityTag.vue'
-import { SEVERITY_LABELS, SEVERITY_ORDER } from '../constants/enums'
+import { RUN_STATUS_LABELS, SEVERITY_LABELS, SEVERITY_ORDER } from '../constants/enums'
 import { downloadExport } from '../api/change'
+import { fetchRuns } from '../api/diff'
 import { useClauseFilter } from '../hooks/useClauseFilter'
 import { useAuthStore } from '../stores/authStore'
 import { useDiffStore } from '../stores/diffStore'
 import type { ApiError } from '../types/api'
+import type { DiffRun } from '../types/domain'
 
 const route = useRoute()
 const router = useRouter()
@@ -145,6 +178,23 @@ const error = ref<ApiError | null>(null)
 const notice = ref('')
 const busyExport = ref(false)
 const canExport = computed(() => auth.can('changes:export'))
+const canRecalc = computed(() => auth.can('diffs:recalc'))
+
+// 同一对版本、不同规则包的兄弟批次，用来在多个口径结论之间切换查看。
+const siblings = ref<DiffRun[]>([])
+async function loadSiblings() {
+  if (!run.value) {
+    siblings.value = []
+    return
+  }
+  const result = await fetchRuns(run.value.document_key)
+  siblings.value = result.items.filter(
+    (item) =>
+      item.id !== run.value!.id &&
+      item.base_version_id === run.value!.base_version_id &&
+      item.target_version_id === run.value!.target_version_id,
+  )
+}
 
 const filter = useClauseFilter(() => changes.value)
 
@@ -167,6 +217,7 @@ async function load() {
       }
     }
     await diffStore.loadChanges(runId.value)
+    await loadSiblings()
   } catch (caught) {
     error.value = caught as ApiError
   } finally {
@@ -202,6 +253,44 @@ onMounted(load)
   color: var(--moss);
   border-left: 2px solid var(--moss);
   padding-left: 9px;
+}
+.rulebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  border: 1px solid var(--rule-soft);
+  background: var(--paper-2);
+  padding: 10px 14px;
+  margin-bottom: 18px;
+  font-size: 11px;
+}
+.rulebar__lineage {
+  color: var(--ink-soft);
+  font-family: var(--serif);
+}
+.rulebar__active-note {
+  color: var(--moss);
+}
+.rulebar__inactive {
+  color: var(--ochre);
+}
+.rulebar__siblings {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.rulebar__sibling {
+  border: 1px solid var(--rule);
+  padding: 2px 8px;
+  font-family: var(--sans);
+  font-size: 10.5px;
+  color: var(--indigo);
+}
+.rulebar__sibling:hover {
+  border-color: var(--seal);
+  color: var(--seal-deep);
 }
 .working {
   display: flex;

@@ -11,6 +11,12 @@ from src.constants.enums import Industry
 class DiffCreateRequest(BaseModel):
     base_version_id: uuid.UUID
     target_version_id: uuid.UUID
+    # 可选：不传则使用当前生效规则包；历史复现可显式指定旧版本。
+    rule_bundle_version: str | None = None
+
+
+class RecalcRequest(BaseModel):
+    target_rule_bundle_version: str | None = None
 
 
 class ChangeConfirmRequest(BaseModel):

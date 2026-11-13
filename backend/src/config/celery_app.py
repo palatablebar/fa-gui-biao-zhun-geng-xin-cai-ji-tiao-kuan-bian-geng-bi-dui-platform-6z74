@@ -24,4 +24,5 @@ celery_app.conf.update(
 
 # 任务名 -> worker 侧真实实现（跨容器共享任务名）
 TASK_RUN_DIFF = "lawdelta.run_diff"
+TASK_RECALC = "lawdelta.run_recalc"
 TASK_SOURCE_SWEEP = "lawdelta.source_sweep"

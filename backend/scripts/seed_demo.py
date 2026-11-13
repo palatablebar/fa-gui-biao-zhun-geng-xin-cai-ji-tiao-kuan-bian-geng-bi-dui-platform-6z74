@@ -29,6 +29,8 @@ from src.models.user import User
 from src.services import audit_service
 from src.services.clause_splitter import split_clauses
 from src.services.diff_service import ALGORITHM_VERSION, execute_diff_run_in_session
+from src.services.rule_registry import LEGACY_RULE_BUNDLE_VERSION, get_rule_context
+from src.services.rule_service import sync_rule_bundles
 from src.utils.password import hash_password
 from scripts import fixtures
 
@@ -166,6 +168,7 @@ def seed_diff_run(
         select(DiffRun).where(
             DiffRun.base_document_id == base.id,
             DiffRun.target_document_id == target.id,
+            DiffRun.rule_bundle_version == LEGACY_RULE_BUNDLE_VERSION,
         )
     ).scalar_one_or_none()
     if run is not None:
@@ -181,6 +184,12 @@ def seed_diff_run(
         else users["analyst"].id,
         status=DiffRunStatus.QUEUED.value,
         algorithm_version=ALGORITHM_VERSION,
+        # seed 内置批次固定绑定升级前历史口径，重算才会产生新口径对照结论。
+        rule_bundle_version=LEGACY_RULE_BUNDLE_VERSION,
+        rule_config=get_rule_context(LEGACY_RULE_BUNDLE_VERSION).to_dict(),
+        is_active=True,
+        lineage="initial",
+        root_run_id=None,
         stats={
             "base_label": base.version_label,
             "target_label": target.version_label,
@@ -192,6 +201,7 @@ def seed_diff_run(
     )
     db.add(run)
     db.flush()
+    run.root_run_id = run.id
     audit_service.record(
         db,
         action=ACTION_DIFF_RUN,
@@ -284,6 +294,7 @@ def format_summary(counts: dict[str, Any]) -> str:
 
 def seed_all() -> dict[str, Any]:
     with session_scope() as db:
+        sync_rule_bundles(db)
         users = seed_users(db)
         sources = seed_sources(db)
         documents = seed_documents(db, sources)

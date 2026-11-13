@@ -4,6 +4,9 @@ export type DiffRunStatus = 'queued' | 'running' | 'succeeded' | 'failed'
 export type ChangeType = 'added' | 'removed' | 'modified' | 'unchanged'
 export type Severity = 'major' | 'general' | 'editorial' | 'unparsed'
 export type Industry = 'manufacturing' | 'medical' | 'environmental'
+export type RecalcStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+export type RecalcDiffStatus = 'added' | 'disappeared' | 'regraded' | 'unchanged'
+export type RunLineage = 'initial' | 'recalc'
 
 export interface SourceItem {
   id: string
@@ -65,6 +68,9 @@ export interface VersionDetail extends DocumentVersion {
     target_label: string
     status: DiffRunStatus
     change_count: number
+    rule_bundle_version: string
+    is_active: boolean
+    lineage: RunLineage
     created_at: string | null
   }[]
 }
@@ -103,6 +109,12 @@ export interface DiffRun {
   target_label: string
   status: DiffRunStatus
   algorithm_version: string
+  rule_bundle_version: string
+  rule_change_summary: string
+  is_active: boolean
+  lineage: RunLineage
+  recalc_of_id: string | null
+  root_run_id: string | null
   stats: DiffStats
   severity_counts: Record<string, number>
   change_count: number
@@ -114,9 +126,64 @@ export interface DiffRun {
   publish_note: string
 }
 
+export interface RuleBundle {
+  version: string
+  name: string
+  change_summary: string
+  is_current: boolean
+  rule_config: {
+    bundle_version: string
+    aligner: { match_threshold: number; change_threshold: number }
+    classifier: {
+      general_edit_ratio_threshold: number
+      escalate_mandatory_wording: boolean
+    }
+  }
+}
+
+export interface Recalculation {
+  id: string
+  source_run_id: string
+  new_run_id: string | null
+  source_rule_bundle_version: string
+  target_rule_bundle_version: string
+  status: RecalcStatus
+  diff_summary: {
+    diff_counts?: Record<RecalcDiffStatus, number>
+    severity_transitions?: Record<string, number>
+    old_change_count?: number
+    new_change_count?: number
+    old_severity_counts?: Record<string, number>
+    new_severity_counts?: Record<string, number>
+  }
+  error_message: string
+  created_at: string | null
+  started_at: string | null
+  finished_at: string | null
+}
+
+export interface RecalculationItem {
+  id: string
+  recalculation_id: string
+  diff_status: RecalcDiffStatus
+  diff_status_label: string
+  item_key: string
+  old_change_item_id: string | null
+  new_change_item_id: string | null
+  old_change_type: string
+  new_change_type: string
+  old_severity: string
+  new_severity: string
+  clause_label_old: string
+  clause_label_new: string
+  detail: Record<string, unknown>
+}
+
 export interface ChangeItem {
   id: string
   diff_run_id: string
+  rule_bundle_version: string
+  item_key: string
   change_type: ChangeType
   change_type_label: string
   severity: Severity
@@ -144,6 +211,7 @@ export interface ChangeItem {
 export interface PublishedGroup {
   diff_run_id: string
   document_key: string
+  rule_bundle_version: string
   title: string
   issuer: string
   base_label: string

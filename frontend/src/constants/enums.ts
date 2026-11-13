@@ -1,4 +1,13 @@
-import type { ChangeType, DocumentStatus, DiffRunStatus, Industry, Severity } from '../types/domain'
+import type {
+  ChangeType,
+  DocumentStatus,
+  DiffRunStatus,
+  Industry,
+  RecalcDiffStatus,
+  RecalcStatus,
+  RunLineage,
+  Severity,
+} from '../types/domain'
 
 /* 与 backend/src/constants/enums.py 一一对应（README 列出全部出现位置） */
 
@@ -44,6 +53,25 @@ export const RUN_STATUS_LABELS: Record<DiffRunStatus, string> = {
   running: '比对中',
   succeeded: '已完成',
   failed: '失败',
+}
+
+export const RECALC_STATUS_LABELS: Record<RecalcStatus, string> = {
+  queued: '排队中',
+  running: '重算中',
+  succeeded: '重算完成',
+  failed: '重算失败',
+}
+
+export const RECALC_DIFF_LABELS: Record<RecalcDiffStatus, string> = {
+  added: '新增',
+  disappeared: '消失',
+  regraded: '改级',
+  unchanged: '不变',
+}
+
+export const RUN_LINEAGE_LABELS: Record<RunLineage, string> = {
+  initial: '首次比对',
+  recalc: '规则重算',
 }
 
 export const SOURCE_KIND_LABELS: Record<string, string> = {

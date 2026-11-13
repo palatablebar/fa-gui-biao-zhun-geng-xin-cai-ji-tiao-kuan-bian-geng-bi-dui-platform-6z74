@@ -16,6 +16,7 @@ celery_app = Celery(
     backend=REDIS_URL,
     include=[
         "worker_src.tasks.diff_task",
+        "worker_src.tasks.recalc_task",
         "worker_src.tasks.heartbeat_task",
         "worker_src.tasks.sweep_task",
     ],

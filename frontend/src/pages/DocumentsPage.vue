@@ -149,9 +149,14 @@
             class="run-link"
           >
             <span class="run-link__pair serif">{{ run.base_label }} → {{ run.target_label }}</span>
+            <span class="run-link__rule">规则 {{ run.rule_bundle_version }}</span>
             <span class="run-link__count num">{{ run.change_count }} 条变更</span>
             <SeverityTag v-if="run.severity_counts?.major" severity="major" :label="`重大 ${run.severity_counts.major}`" />
-            <StatusSeal :label="RUN_STATUS_LABELS[run.status]" :tone="run.status === 'failed' ? 'seal' : 'indigo'" size="sm" />
+            <StatusSeal
+              :label="run.is_active ? RUN_STATUS_LABELS[run.status] : '历史口径'"
+              :tone="run.is_active ? (run.status === 'failed' ? 'seal' : 'indigo') : 'ink'"
+              size="sm"
+            />
           </RouterLink>
         </div>
         <div v-else class="doc__runs doc__runs--empty">
@@ -487,6 +492,13 @@ onMounted(refresh)
 .run-link__pair {
   font-size: 13px;
   min-width: 96px;
+}
+.run-link__rule {
+  font-family: var(--sans);
+  font-size: 9.5px;
+  color: var(--indigo);
+  border: 1px solid var(--rule-soft);
+  padding: 1px 5px;
 }
 .run-link__count {
   color: var(--ink-soft);

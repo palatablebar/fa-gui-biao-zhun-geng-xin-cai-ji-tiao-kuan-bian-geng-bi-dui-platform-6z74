@@ -5,6 +5,9 @@ ACTION_LOGIN = "auth.login"
 ACTION_CRAWL = "source.crawl"
 ACTION_DIFF_RUN = "diff.run"
 ACTION_DIFF_FAIL = "diff.fail"
+ACTION_RECALC_RUN = "recalc.run"
+ACTION_RECALC_FAIL = "recalc.fail"
+ACTION_RECALC_SWITCH = "recalc.switch"
 ACTION_CHANGE_CONFIRM = "change.confirm"
 ACTION_CHANGE_PUBLISH = "change.publish"
 ACTION_SOURCE_TOGGLE = "source.toggle"
@@ -15,6 +18,9 @@ AUDIT_ACTIONS: tuple[str, ...] = (
     ACTION_CRAWL,
     ACTION_DIFF_RUN,
     ACTION_DIFF_FAIL,
+    ACTION_RECALC_RUN,
+    ACTION_RECALC_FAIL,
+    ACTION_RECALC_SWITCH,
     ACTION_CHANGE_CONFIRM,
     ACTION_CHANGE_PUBLISH,
     ACTION_SOURCE_TOGGLE,
